@@ -1,5 +1,6 @@
 package com.dkanada.gramophone.service;
 
+import android.annotation.SuppressLint;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.appwidget.AppWidgetManager;
@@ -14,6 +15,7 @@ import android.graphics.Bitmap;
 import android.graphics.Point;
 import android.graphics.drawable.Drawable;
 import android.media.AudioManager;
+import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -25,6 +27,7 @@ import android.os.PowerManager;
 import android.os.Process;
 import android.preference.PreferenceManager;
 import android.provider.MediaStore;
+import android.support.v4.media.MediaDescriptionCompat;
 import android.support.v4.media.MediaMetadataCompat;
 import android.support.v4.media.session.MediaSessionCompat;
 import android.support.v4.media.session.PlaybackStateCompat;
@@ -57,8 +60,10 @@ import com.dkanada.gramophone.widgets.AppWidgetClassic;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ExecutionException;
 
 public class MusicService extends Service implements SharedPreferences.OnSharedPreferenceChangeListener, Playback.PlaybackCallbacks {
     public static final String PHONOGRAPH_PACKAGE_NAME = "com.dkanada.gramophone";
@@ -251,6 +256,11 @@ public class MusicService extends Service implements SharedPreferences.OnSharedP
             @Override
             public void onSeekTo(long pos) {
                 seek((int) pos);
+            }
+
+            @Override
+            public void onSkipToQueueItem(long id) {
+                playSongAt((int) id);
             }
 
             @Override
@@ -520,9 +530,11 @@ public class MusicService extends Service implements SharedPreferences.OnSharedP
                 new PlaybackStateCompat.Builder()
                         .setActions(MEDIA_SESSION_ACTIONS)
                         .setState(isPlaying() ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED, getSongProgressMillis(), 1)
+                        .setActiveQueueItemId(position)
                         .build());
     }
 
+    @SuppressLint("StaticFieldLeak")
     private void updateMediaSessionMetaData() {
         final Song song = getCurrentSong();
 
@@ -576,6 +588,50 @@ public class MusicService extends Service implements SharedPreferences.OnSharedP
         } else {
             mediaSession.setMetadata(metaData.build());
         }
+
+        new AsyncTask<Void, Void, List<MediaSessionCompat.QueueItem>>() {
+            @Override
+            protected List<MediaSessionCompat.QueueItem> doInBackground(Void... voids) {
+                final List<MediaSessionCompat.QueueItem> queue = new ArrayList<>();
+                final HashMap<String, Bitmap> bitmaps = new HashMap<>();
+                final int currentPosition = getPosition();
+                for (int i = 0; i < playingQueue.size(); i++) {
+                    // Limit to 20 entries
+                    if (i < currentPosition - 5 || i > currentPosition + 14) continue;
+
+                    final boolean isCurrentSong = i == getPosition();
+                    final Song queueSong = playingQueue.get(i);
+                    final MediaDescriptionCompat.Builder description = new MediaDescriptionCompat.Builder()
+                            .setTitle(queueSong.title)
+                            .setSubtitle(queueSong.artistName)
+                            .setDescription(queueSong.albumName);
+
+                    final String artworkUrl = queueSong.primary;
+                    Bitmap artwork = bitmaps.get(artworkUrl);
+                    if (artwork == null || isCurrentSong) {
+                        final BitmapRequestBuilder<?, Bitmap> request = CustomGlideRequest.Builder
+                                .from(Glide.with(MusicService.this), artworkUrl)
+                                .asBitmap().build();
+                        int res = isCurrentSong ? 500 : 96;
+                        try {
+                            artwork = request.into(res, res).get();
+                            bitmaps.put(artworkUrl, artwork);
+                        } catch (ExecutionException | InterruptedException e) {
+                            // Ignore
+                        }
+                    }
+                    if (artwork != null) description.setIconBitmap(artwork);
+                    queue.add(new MediaSessionCompat.QueueItem(description.build(), i));
+                }
+                return queue;
+            }
+
+            @Override
+            protected void onPostExecute(List<MediaSessionCompat.QueueItem> queue) {
+                mediaSession.setQueueTitle("Queue");
+                mediaSession.setQueue(queue);
+            }
+        }.execute();
     }
 
     private static Bitmap copy(Bitmap bitmap) {

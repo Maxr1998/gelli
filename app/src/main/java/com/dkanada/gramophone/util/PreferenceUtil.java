@@ -212,7 +212,7 @@ public final class PreferenceUtil {
     }
 
     public final boolean getBlurAlbumCover() {
-        return mPreferences.getBoolean(BLUR_ALBUM_COVER, true);
+        return mPreferences.getBoolean(BLUR_ALBUM_COVER, false);
     }
 
     public final String getAlbumSortOrder() {

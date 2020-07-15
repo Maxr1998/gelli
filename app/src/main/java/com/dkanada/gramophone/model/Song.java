@@ -2,6 +2,7 @@ package com.dkanada.gramophone.model;
 
 import android.os.Parcel;
 import android.os.Parcelable;
+import android.support.v4.media.MediaDescriptionCompat;
 
 import org.jellyfin.apiclient.model.dto.BaseItemDto;
 import org.jellyfin.apiclient.model.dto.MediaSourceInfo;
