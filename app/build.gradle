@@ -17,22 +17,12 @@ android {
         }
     }
 
-    signingConfigs {
-        release {
-            storeFile file('../store.jks')
-            storePassword System.getenv('STORE_PASSWORD')
-            keyAlias System.getenv('KEY_ALIAS')
-            keyPassword System.getenv('KEY_PASSWORD')
-        }
-    }
-
     buildTypes {
         release {
             shrinkResources true
             minifyEnabled true
 
             proguardFiles file('proguard-rules.pro')
-            signingConfig signingConfigs.release
         }
 
         debug {
